@@ -1,0 +1,1 @@
+Diktae 1.1.0 — refonte complète : nouveau nom, nouveau design (clair/sombre), hub Documents (certificat, compte-rendu, feuille de soins), Compta (factures & devis), Stérilisation (traçabilité autoclave), photos de soin depuis l'iPhone, fiches rédigées par Claude Sonnet 5.
