@@ -1,9 +1,17 @@
-# Publie la Release OTA à partir d'un tag v* : les artefacts signés doivent
-# être commités dans artefacts/<tag>/ (zip + manifest.json + NOTES.md).
-# La signature Ed25519 du manifest est vérifiée par l'app côté poste — ce
-# workflow ne fait que l'hébergement.
+# Publie la Release OTA. Deux déclencheurs :
+#   - manuel (workflow_dispatch) avec le tag en entrée ;
+#   - push d'un tag v* (si poussé depuis un poste qui le permet).
+# Les artefacts signés doivent être commités dans artefacts/<tag>/
+# (zip + manifest.json + NOTES.md). La signature Ed25519 du manifest est
+# vérifiée par l'app côté poste — ce workflow ne fait que l'hébergement.
 name: Publier la release OTA
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag de la release (ex. v1.1.0) — un dossier artefacts/<tag>/ doit exister"
+        required: true
+        default: "v1.1.0"
   push:
     tags: ["v*"]
 permissions:
@@ -17,10 +25,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
           DIR="artefacts/$TAG"
           test -f "$DIR"/manifest.json || { echo "manifest.json absent de $DIR"; exit 1; }
           gh release create "$TAG" "$DIR"/podonote-app-*.zip "$DIR"/manifest.json \
             --title "Diktae ${TAG#v}" \
             --notes-file "$DIR/NOTES.md" \
+            --target "$GITHUB_SHA" \
             --repo "$GITHUB_REPOSITORY"
