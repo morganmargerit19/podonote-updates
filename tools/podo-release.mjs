@@ -21,6 +21,9 @@ const run = (cmd, cmdArgs, opts = {}) =>
   execFileSync(cmd, cmdArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], ...opts }).trim();
 const runRaw = (cmd, cmdArgs) =>
   execFileSync(cmd, cmdArgs, { stdio: ['ignore', 'pipe', 'inherit'], maxBuffer: 64 * 1024 * 1024 });
+// Sortie laissée à l'écran (gh affiche sa progression d'envoi) : execFileSync ne
+// renvoie alors rien, il n'y a donc rien à lire ni à découper.
+const runVisible = (cmd, cmdArgs) => { execFileSync(cmd, cmdArgs, { stdio: 'inherit' }); };
 
 function args(argv) {
   const o = {};
@@ -83,37 +86,65 @@ const payload = b64u(Buffer.from(JSON.stringify(payloadObj), 'utf8'));
 const manifest = JSON.stringify(
   { payload, sig: b64u(sign(null, Buffer.from(payload, 'ascii'), loadKey('update'))) }, null, 2) + '\n';
 
-// Dépôt dans le dossier d'artefacts : trace de ce qui a été signé, à l'octet près.
 const dossier = join('artefacts', `v${version}`);
-mkdirSync(dossier, { recursive: true });
-copyFileSync(zip, join(dossier, nomZip));
-writeFileSync(join(dossier, 'manifest.json'), manifest);
 const notesFile = a['notes-file'] && resolve(a['notes-file']);
-if (notesFile) copyFileSync(notesFile, join(dossier, 'NOTES.md'));
-writeFileSync('publier.txt', `v${version}\n`);
 
+console.log(`version  : ${version}   (précédente : ${publiee || 'aucune'})`);
 console.log(`paquet   : ${nomZip}  (${(readFileSync(zip).length / 1e6).toFixed(1)} Mo)`);
 console.log(`sha256   : ${sha256}`);
 console.log(`manifest : signé avec la clé update ${PUB_UPDATE.slice(0, 12)}…`);
 console.log(`artefacts: ${dossier}/`);
 
+// --essai s'arrête ici, AVANT toute écriture : un essai ne doit rien laisser
+// derrière lui, sans quoi un abandon en cours de route laisserait publier.txt
+// annonçant une version jamais publiée.
 if (essai) {
-  console.log('\n--essai : ni commit, ni release. Les fichiers sont écrits, rien n\'est publié.');
+  console.log('\nEssai : rien n\'a été écrit, commité ni publié.');
   process.exit(0);
 }
+
+// Dépôt dans le dossier d'artefacts : trace de ce qui a été signé, à l'octet près.
+mkdirSync(dossier, { recursive: true });
+copyFileSync(zip, join(dossier, nomZip));
+writeFileSync(join(dossier, 'manifest.json'), manifest);
+if (notesFile) copyFileSync(notesFile, join(dossier, 'NOTES.md'));
+writeFileSync('publier.txt', `v${version}\n`);
 
 run('git', ['add', dossier, 'publier.txt']);
 run('git', ['commit', '-m', `OTA Diktae ${version}`]);
 run('git', ['push', '-u', 'origin', run('git', ['rev-parse', '--abbrev-ref', 'HEAD'])]);
+const commit = run('git', ['rev-parse', 'HEAD']);
 
-const ghArgs = ['release', 'create', `v${version}`, '--repo', REPO, '--title', `Diktae ${version}`,
+// --target : le tag doit désigner le commit qui vient d'être poussé. Sans lui,
+// gh poserait le tag sur la tête de la branche par défaut, qui ne contient pas
+// forcément ces artefacts.
+const ghArgs = ['release', 'create', `v${version}`, '--repo', REPO, '--target', commit,
+  '--title', `Diktae ${version}`,
   join(dossier, nomZip), join(dossier, 'manifest.json')];
 ghArgs.push(...(notesFile ? ['--notes-file', notesFile] : ['--notes', payloadObj.notes]));
-run('gh', ghArgs, { stdio: 'inherit' });
+
+// Le commit est déjà poussé : si la release échoue, le dépôt annonce une version
+// que les postes ne trouveront jamais. On le dit franchement plutôt que de laisser
+// deviner l'état réel.
+const inacheve = (quoi, e) => {
+  throw new Error(
+    `${quoi}\n${e.message}\n\n` +
+    `ATTENTION : le commit ${commit.slice(0, 8)} est poussé et publier.txt annonce ${version}, ` +
+    `mais AUCUNE release n'est publiée — les postes restent sur ${publiee || 'leur version actuelle'}.\n` +
+    `Reprenez la publication avec :\n  gh release create v${version} --repo ${REPO} --target ${commit} ` +
+    `--title "Diktae ${version}" ${join(dossier, nomZip)} ${join(dossier, 'manifest.json')}`);
+};
+
+try { runVisible('gh', ghArgs); }
+catch (e) { inacheve('La création de la release GitHub a échoué.', e); }
 
 // Relecture par le chemin qu'emprunte réellement un poste client.
-const distant = run('curl', ['-fsSL', `https://github.com/${REPO}/releases/latest/download/manifest.json`]);
+let distant;
+try { distant = run('curl', ['-fsSL', `https://github.com/${REPO}/releases/latest/download/manifest.json`]); }
+catch (e) { inacheve('La release ne répond pas sur l\'URL « latest ».', e); }
 if (JSON.parse(distant).payload !== payload) {
-  throw new Error("La release est publiée mais « latest » ne sert pas ce manifest : vérifiez qu'aucune release plus récente ne la précède.");
+  throw new Error(
+    `La release v${version} est créée, mais « latest » sert un autre manifest.\n` +
+    `Vérifiez qu'aucune release plus récente ne la précède sur ${REPO}.`);
 }
 console.log(`\npublié : les postes verront Diktae ${version} à leur prochaine vérification (toutes les 6 h).`);
