@@ -64,6 +64,20 @@ Leurs valeurs sont dans les variables d'environnement de l'environnement Claude 
 `PODONOTE_SIGN_KEY_B64` et `PODONOTE_SIGN_PASSPHRASE`. Au premier lancement, un lanceur
 les demande dans trois fenêtres à saisie masquée et les range dans le trousseau du Mac.
 
+Les outils cherchent ces trois valeurs dans trois sources, dans cet ordre : variables
+d'environnement, trousseau du Mac, puis un fichier `.env` à la racine du dépôt (ou le chemin
+donné par `PODONOTE_ENV`). La première valeur qui correspond à la clé publique de l'app
+l'emporte, donc une valeur périmée quelque part n'empêche pas une valeur correcte ailleurs de
+servir.
+
+> **Le `.env` est un dépannage, pas un rangement.** Ce dépôt est **public** : une clé poussée
+> dedans serait compromise définitivement, et permettrait à n'importe qui d'émettre des licences
+> et de pousser du code sur tous les postes installés. Le `.gitignore` bloque `.env`, `*.pem`
+> et `*.key`, mais un fichier de secrets dans un dossier versionné reste une mauvaise place.
+> Le trousseau, lui, n'est jamais lu par git. Pour y transférer un `.env` existant, lancez
+> n'importe quel lanceur après avoir renommé le `.env` : les clés étant alors introuvables,
+> il proposera de les saisir, puis les rangera dans le trousseau.
+
 Une valeur mal collée est repérée tout de suite : les outils refusent de signer avec une
 clé dont la publique ne correspond pas à celle de l'app, et vous proposent de recommencer
 la saisie plutôt que d'émettre des jetons que les postes rejetteraient.
