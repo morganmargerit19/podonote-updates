@@ -1,6 +1,7 @@
 {
   // Cmd+Shift+P → « Tasks: Run Task », ou Cmd+Shift+B pour la publication.
-  // Les clés de signature sont lues dans le trousseau du Mac : rien à configurer ici.
+  // Les clés de signature sont cherchées dans les variables d'environnement, le
+  // trousseau du Mac puis le .env du dépôt : rien à configurer ici.
   "version": "2.0.0",
   "tasks": [
     {

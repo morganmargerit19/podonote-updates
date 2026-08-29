@@ -33,7 +33,7 @@ commandes, puis copie la clé dans le presse-papiers. « Publier une mise à jou
 même déroulé qu'un double-clic dans le Finder : le sélecteur de fichiers et les confirmations
 sont ceux de macOS, pour ne pas avoir à taper un chemin de paquet à la main.
 
-Rien à configurer : les tâches lisent les clés dans le trousseau, comme les lanceurs.
+Rien à configurer : les tâches trouvent les clés par les mêmes sources que les lanceurs.
 
 ## Préparation, une fois pour toutes
 
