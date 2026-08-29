@@ -19,6 +19,22 @@ pas cliqué « Publier ».
 > macOS peut demander une confirmation au tout premier double-clic d'un `.command`.
 > Si le Finder refuse de l'ouvrir : clic droit sur le fichier → **Ouvrir**.
 
+## Depuis VS Code
+
+Ouvrez ce dossier dans VS Code : trois tâches sont déjà configurées (`.vscode/tasks.json`).
+
+| Raccourci | Tâche |
+| --- | --- |
+| **Cmd+Shift+B** | Publier une mise à jour OTA |
+| Cmd+Shift+P → « Tasks: Run Task » | Émettre une licence · Vérifier les clés de signature |
+
+« Émettre une licence » demande le titulaire, la durée et la formule dans la palette de
+commandes, puis copie la clé dans le presse-papiers. « Publier une mise à jour OTA » lance le
+même déroulé qu'un double-clic dans le Finder : le sélecteur de fichiers et les confirmations
+sont ceux de macOS, pour ne pas avoir à taper un chemin de paquet à la main.
+
+Rien à configurer : les tâches lisent les clés dans le trousseau, comme les lanceurs.
+
 ## Préparation, une fois pour toutes
 
 Trois choses à faire, la seule fois où le Terminal est nécessaire :
@@ -83,7 +99,7 @@ node tools/podo-licence.mjs --titulaire "Nico" --jours 20 --formule essai
 
 Formules : `essai`, `mensuel`, `trimestriel`, `annuel`, `dev`. L'app accorde 7 jours de grâce
 après l'expiration. `--machine DKT-XXXX-XXXX-XXXX-XXXX` lie la clé à un poste unique
-(identifiant affiché sur son écran Licence).
+(identifiant affiché sur son écran Licence). `--copier` met la clé dans le presse-papiers.
 
 ```sh
 node tools/podo-release.mjs --zip ~/dev/podonote/dist/podonote-app-1.1.8.zip \

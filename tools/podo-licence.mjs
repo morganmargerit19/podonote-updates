@@ -4,6 +4,7 @@
 //   node tools/podo-licence.mjs --titulaire "Nico" --jours 20 --formule essai
 //   node tools/podo-licence.mjs --titulaire "Cabinet X" --formule annuel --jours 365
 //   node tools/podo-licence.mjs --titulaire "Nico" --jours 30 --machine DKT-1A2B-…  (clé liée à un poste)
+//   … --copier   met la clé dans le presse-papiers, prête à coller dans un message
 //
 // Format produit : « <base64url(payload)>.<base64url(signature Ed25519)> », exactement
 // ce qu'attend app/license.py. La charge utile compacte (1 octet de format, 1 octet de
@@ -18,9 +19,11 @@ const FMT_COMPACT = 2;
 
 function args(argv) {
   const o = {};
-  for (let i = 0; i < argv.length; i += 2) {
+  for (let i = 0; i < argv.length; i++) {
     if (!argv[i].startsWith('--')) throw new Error(`Argument inattendu : ${argv[i]}`);
-    o[argv[i].slice(2)] = argv[i + 1];
+    const k = argv[i].slice(2);
+    // Drapeau sans valeur (--copier) ou option valuée (--jours 20).
+    if (argv[i + 1] && !argv[i + 1].startsWith('--')) { o[k] = argv[++i]; } else { o[k] = true; }
   }
   return o;
 }
@@ -65,6 +68,12 @@ const pub = createPublicKey({
 });
 if (!verify(null, Buffer.from(payload, 'ascii'), pub, Buffer.from(token.split('.')[1], 'base64url'))) {
   throw new Error('Vérification de la signature échouée — clé NON émise.');
+}
+
+if (a.copier) {
+  const { execFileSync } = await import('node:child_process');
+  try { execFileSync('pbcopy', { input: token }); }
+  catch { console.error('(presse-papiers indisponible — copiez la clé à la main)'); }
 }
 
 const fin = new Date(expJours * JOUR * 1000).toISOString().slice(0, 10);
