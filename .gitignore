@@ -1,0 +1,8 @@
+# Les clés de signature ne doivent JAMAIS être versionnées : ce dépôt est public,
+# et une clé poussée ici permettrait à quiconque d'émettre des licences et de
+# pousser du code sur tous les postes installés.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
