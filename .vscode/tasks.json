@@ -1,0 +1,66 @@
+{
+  // Cmd+Shift+P → « Tasks: Run Task », ou Cmd+Shift+B pour la publication.
+  // Les clés de signature sont cherchées dans les variables d'environnement, le
+  // trousseau du Mac puis le .env du dépôt : rien à configurer ici.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Publier une mise à jour OTA",
+      "detail": "Choix du paquet, récapitulatif à valider, puis release GitHub signée",
+      "type": "shell",
+      "command": "'${workspaceFolder}/tools/mac/Publier une mise a jour OTA.command'",
+      // Le lanceur ouvre le sélecteur de fichiers et les fenêtres de confirmation
+      // de macOS : le choix du paquet ne passe pas par un chemin tapé à la main.
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "Émettre une licence",
+      "detail": "Titulaire, durée, formule — la clé est copiée dans le presse-papiers",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "tools/podo-licence.mjs",
+        "--titulaire", "${input:titulaire}",
+        "--jours", "${input:jours}",
+        "--formule", "${input:formule}",
+        "--copier"
+      ],
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "Vérifier les clés de signature",
+      "detail": "Contrôle que les deux clés du trousseau correspondent aux clés publiques de l'app",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "-e",
+        "import('./tools/podo-keys.mjs').then(m=>{m.loadKey('licence');m.loadKey('update');console.log('Les deux cles sont en place et correspondent aux cles publiques embarquees dans l app.')}).catch(e=>{console.error(e.message);process.exit(1)})"
+      ],
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "titulaire",
+      "type": "promptString",
+      "description": "Nom du titulaire de la licence"
+    },
+    {
+      "id": "jours",
+      "type": "promptString",
+      "description": "Durée de la licence, en jours",
+      "default": "30"
+    },
+    {
+      "id": "formule",
+      "type": "pickString",
+      "description": "Formule",
+      "options": ["essai", "mensuel", "trimestriel", "annuel", "dev"],
+      "default": "essai"
+    }
+  ]
+}

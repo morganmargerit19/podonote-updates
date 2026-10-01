@@ -105,8 +105,6 @@ Ouvrez le Terminal une seule fois et lancez :
     gh auth login"
 }
 
-_cle_presente() { security find-generic-password -s "$1" >/dev/null 2>&1; }
-
 # Demande une valeur et la range dans le trousseau.
 _ranger_cle() {
   local service="$1" libelle="$2" valeur
@@ -118,41 +116,30 @@ Elle reste masquée pendant la saisie et n'est enregistrée que dans le troussea
   security add-generic-password -U -a "$USER" -s "$service" -w "$valeur" >/dev/null
 }
 
-# Contrôle les clés et propose de les installer si besoin. La vérification
-# porte sur la correspondance avec les clés publiques embarquées dans l'app :
-# une valeur mal collée est détectée ici, pas au moment de signer.
+# Contrôle les clés, et ne propose de les saisir que si aucune source ne convient.
+# Les scripts cherchent d'eux-mêmes dans les variables d'environnement, le
+# trousseau puis le .env du dépôt : on interroge donc d'abord le résultat, plutôt
+# que la seule présence d'une entrée dans le trousseau.
 verifier_cles() {
-  local manquantes=0
-  _cle_presente podonote-license-key || manquantes=1
-  _cle_presente podonote-sign-key || manquantes=1
-  _cle_presente podonote-sign-passphrase || manquantes=1
-
-  if [ "$manquantes" = 1 ]; then
-    dialogue_confirmer "Les clés de signature ne sont pas encore installées sur ce Mac.
-
-Trois valeurs vous seront demandées, une par fenêtre. Elles ne sont demandées que cette fois-ci." "Installer" || exit 0
-    _cle_presente podonote-license-key || _ranger_cle podonote-license-key "Clé de signature des LICENCES (PODONOTE_LICENSE_KEY_B64)"
-    _cle_presente podonote-sign-key || _ranger_cle podonote-sign-key "Clé de signature des MISES À JOUR (PODONOTE_SIGN_KEY_B64)"
-    _cle_presente podonote-sign-passphrase || _ranger_cle podonote-sign-passphrase "Passphrase de la clé de mise à jour (PODONOTE_SIGN_PASSPHRASE)"
-  fi
-
   local erreur
   erreur=$(cd "$RACINE" && node -e "
     import('./tools/podo-keys.mjs').then(m => { m.loadKey('licence'); m.loadKey('update'); })
       .catch(e => { console.error(e.message); process.exit(1); })" 2>&1) && return 0
 
-  # Valeur erronée : on retire ce qui vient d'être enregistré pour que la
-  # prochaine tentative reparte d'une page blanche plutôt que d'une clé fausse.
-  if dialogue_confirmer "Les clés enregistrées ne sont pas exploitables :
+  dialogue_confirmer "Les clés de signature ne sont pas utilisables sur ce Mac :
 
 $erreur
 
-Voulez-vous les saisir à nouveau ?" "Recommencer"; then
-    security delete-generic-password -s podonote-license-key >/dev/null 2>&1
-    security delete-generic-password -s podonote-sign-key >/dev/null 2>&1
-    security delete-generic-password -s podonote-sign-passphrase >/dev/null 2>&1
-    verifier_cles
-  else
-    exit 1
-  fi
+Voulez-vous les saisir maintenant ? Elles seront rangées dans le trousseau." "Saisir les clés" || exit 1
+
+  _ranger_cle podonote-license-key "Clé de signature des LICENCES (PODONOTE_LICENSE_KEY_B64)"
+  _ranger_cle podonote-sign-key "Clé de signature des MISES À JOUR (PODONOTE_SIGN_KEY_B64)"
+  _ranger_cle podonote-sign-passphrase "Passphrase de la clé de mise à jour (PODONOTE_SIGN_PASSPHRASE)"
+
+  erreur=$(cd "$RACINE" && node -e "
+    import('./tools/podo-keys.mjs').then(m => { m.loadKey('licence'); m.loadKey('update'); })
+      .catch(e => { console.error(e.message); process.exit(1); })" 2>&1) && return 0
+  dialogue_erreur "Les clés saisies ne sont toujours pas utilisables :
+
+$erreur"
 }

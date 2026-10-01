@@ -4,12 +4,21 @@
 //   licence : signe les clés de licence          → clé publique 4BtFnPd… (app/license.py)
 //   update  : signe les manifests de mise à jour → clé publique RI6Cmxk… (app/updater.py)
 //
-// Ordre de recherche : variable d'environnement, puis trousseau macOS.
+// Trois sources, essayées dans cet ordre : variable d'environnement, trousseau
+// macOS, puis fichier .env. La première valeur qui correspond à la clé publique
+// embarquée dans l'app l'emporte — une valeur périmée dans une source n'empêche
+// donc pas une valeur correcte ailleurs de servir.
 import { createPrivateKey, createPublicKey } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const PUB_LICENCE = '4BtFnPdW+EjMlukFYI+xUa4oPKBurvDV566V0sWsB7g=';
 export const PUB_UPDATE = 'RI6CmxkEeCfzGBhzuetQ6P+ariJnJUsx1HxmM7QWDJ4=';
+
+const RACINE = join(dirname(fileURLToPath(import.meta.url)), '..');
+export const CHEMIN_ENV = process.env.PODONOTE_ENV || join(RACINE, '.env');
 
 const SPEC = {
   licence: { env: 'PODONOTE_LICENSE_KEY_B64', service: 'podonote-license-key', pub: PUB_LICENCE },
@@ -27,42 +36,75 @@ function keychain(service) {
   } catch { return ''; }
 }
 
-const fromEnvOrKeychain = (env, service) => (process.env[env] || '').trim() || keychain(service);
+/** Lit un .env simple : une ligne NOM=valeur, guillemets optionnels, # en commentaire. */
+export function lireEnv(chemin = CHEMIN_ENV) {
+  if (!existsSync(chemin)) return {};
+  const out = {};
+  for (const ligne of readFileSync(chemin, 'utf8').split(/\r?\n/)) {
+    const m = ligne.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!m) continue;
+    let v = m[2].trim();
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+    out[m[1]] = v.trim();
+  }
+  return out;
+}
+
+// Sources d'une variable, dans l'ordre de préférence, avec l'origine pour les messages.
+function candidats(nomEnv, service) {
+  const env = lireEnv();
+  return [
+    { valeur: (process.env[nomEnv] || '').trim(), origine: `la variable ${nomEnv}` },
+    { valeur: service ? keychain(service) : '', origine: `le trousseau (« ${service} »)` },
+    { valeur: (env[nomEnv] || '').trim(), origine: `le fichier ${CHEMIN_ENV}` },
+  ].filter((c) => c.valeur);
+}
 
 export function publicKeyOf(key) {
   return createPublicKey(key).export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64');
 }
 
-/** Renvoie la clé privée demandée, après contrôle qu'elle correspond bien à la clé publique embarquée. */
+function ouvrir(b64, passphrases) {
+  const pem = Buffer.from(b64, 'base64').toString('utf8');
+  if (!pem.startsWith('-----BEGIN')) throw new Error('ce n\'est pas un PEM encodé en base64');
+  if (!passphrases) return createPrivateKey({ key: pem });
+  let derniere;
+  for (const p of passphrases) {
+    try { return createPrivateKey({ key: pem, passphrase: p.valeur }); }
+    catch (e) { derniere = e; }
+  }
+  throw new Error(passphrases.length ? 'passphrase erronée' : 'passphrase manquante', { cause: derniere });
+}
+
+/** Renvoie la clé privée demandée, après contrôle qu'elle correspond à la clé publique de l'app. */
 export function loadKey(role) {
   const spec = SPEC[role];
-  const b64 = fromEnvOrKeychain(spec.env, spec.service);
-  if (!b64) {
+  const cles = candidats(spec.env, spec.service);
+  if (!cles.length) {
     throw new Error(
-      `Clé « ${role} » introuvable : ni $${spec.env}, ni le trousseau (service « ${spec.service} »).\n` +
-      `Voir tools/README.md § Installation sur le Mac.`);
+      `Clé « ${role} » introuvable. Cherchée dans : la variable ${spec.env}, ` +
+      `le trousseau (« ${spec.service} ») et ${CHEMIN_ENV}.\n` +
+      `Voir tools/README.md § Les clés de signature.`);
   }
-  const pem = Buffer.from(b64, 'base64').toString('utf8');
-  if (!pem.startsWith('-----BEGIN')) throw new Error(`La clé « ${role} » n'est pas un PEM encodé en base64.`);
-
-  const opts = { key: pem };
-  if (spec.passEnv) {
-    const pass = fromEnvOrKeychain(spec.passEnv, spec.passService);
-    if (!pass) throw new Error(`Passphrase manquante : ni $${spec.passEnv}, ni le trousseau (« ${spec.passService} »).`);
-    opts.passphrase = pass;
-  }
-  let key;
-  try { key = createPrivateKey(opts); }
-  catch (e) { throw new Error(`Clé « ${role} » illisible (passphrase erronée ?) : ${e.message}`); }
-
-  const pub = publicKeyOf(key);
-  if (pub !== spec.pub) {
+  const passes = spec.passEnv ? candidats(spec.passEnv, spec.passService) : null;
+  if (spec.passEnv && !passes.length) {
     throw new Error(
-      `La clé « ${role} » ne correspond pas à la clé publique embarquée dans l'app.\n` +
-      `  attendue : ${spec.pub}\n  trouvée  : ${pub}\n` +
-      `Les clés émises seraient rejetées par tous les postes — rien n'a été signé.`);
+      `Passphrase de la clé « ${role} » introuvable. Cherchée dans : la variable ${spec.passEnv}, ` +
+      `le trousseau (« ${spec.passService} ») et ${CHEMIN_ENV}.`);
   }
-  return key;
+
+  const echecs = [];
+  for (const c of cles) {
+    let key;
+    try { key = ouvrir(c.valeur, passes); }
+    catch (e) { echecs.push(`  ${c.origine} : ${e.message}`); continue; }
+    const pub = publicKeyOf(key);
+    if (pub === spec.pub) return key;
+    echecs.push(`  ${c.origine} : correspond à ${pub}, pas à la clé publique de l'app`);
+  }
+  throw new Error(
+    `Aucune clé « ${role} » exploitable — attendue : ${spec.pub}\n${echecs.join('\n')}\n` +
+    `Les clés émises depuis ces valeurs seraient rejetées par tous les postes ; rien n'a été signé.`);
 }
 
 export const b64u = (b) => Buffer.from(b).toString('base64url');

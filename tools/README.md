@@ -19,6 +19,22 @@ pas cliqué « Publier ».
 > macOS peut demander une confirmation au tout premier double-clic d'un `.command`.
 > Si le Finder refuse de l'ouvrir : clic droit sur le fichier → **Ouvrir**.
 
+## Depuis VS Code
+
+Ouvrez ce dossier dans VS Code : trois tâches sont déjà configurées (`.vscode/tasks.json`).
+
+| Raccourci | Tâche |
+| --- | --- |
+| **Cmd+Shift+B** | Publier une mise à jour OTA |
+| Cmd+Shift+P → « Tasks: Run Task » | Émettre une licence · Vérifier les clés de signature |
+
+« Émettre une licence » demande le titulaire, la durée et la formule dans la palette de
+commandes, puis copie la clé dans le presse-papiers. « Publier une mise à jour OTA » lance le
+même déroulé qu'un double-clic dans le Finder : le sélecteur de fichiers et les confirmations
+sont ceux de macOS, pour ne pas avoir à taper un chemin de paquet à la main.
+
+Rien à configurer : les tâches trouvent les clés par les mêmes sources que les lanceurs.
+
 ## Préparation, une fois pour toutes
 
 Trois choses à faire, la seule fois où le Terminal est nécessaire :
@@ -47,6 +63,20 @@ Leurs valeurs sont dans les variables d'environnement de l'environnement Claude 
 (réglages de l'environnement, sur claude.ai/code) : `PODONOTE_LICENSE_KEY_B64`,
 `PODONOTE_SIGN_KEY_B64` et `PODONOTE_SIGN_PASSPHRASE`. Au premier lancement, un lanceur
 les demande dans trois fenêtres à saisie masquée et les range dans le trousseau du Mac.
+
+Les outils cherchent ces trois valeurs dans trois sources, dans cet ordre : variables
+d'environnement, trousseau du Mac, puis un fichier `.env` à la racine du dépôt (ou le chemin
+donné par `PODONOTE_ENV`). La première valeur qui correspond à la clé publique de l'app
+l'emporte, donc une valeur périmée quelque part n'empêche pas une valeur correcte ailleurs de
+servir.
+
+> **Le `.env` est un dépannage, pas un rangement.** Ce dépôt est **public** : une clé poussée
+> dedans serait compromise définitivement, et permettrait à n'importe qui d'émettre des licences
+> et de pousser du code sur tous les postes installés. Le `.gitignore` bloque `.env`, `*.pem`
+> et `*.key`, mais un fichier de secrets dans un dossier versionné reste une mauvaise place.
+> Le trousseau, lui, n'est jamais lu par git. Pour y transférer un `.env` existant, lancez
+> n'importe quel lanceur après avoir renommé le `.env` : les clés étant alors introuvables,
+> il proposera de les saisir, puis les rangera dans le trousseau.
 
 Une valeur mal collée est repérée tout de suite : les outils refusent de signer avec une
 clé dont la publique ne correspond pas à celle de l'app, et vous proposent de recommencer
@@ -83,7 +113,7 @@ node tools/podo-licence.mjs --titulaire "Nico" --jours 20 --formule essai
 
 Formules : `essai`, `mensuel`, `trimestriel`, `annuel`, `dev`. L'app accorde 7 jours de grâce
 après l'expiration. `--machine DKT-XXXX-XXXX-XXXX-XXXX` lie la clé à un poste unique
-(identifiant affiché sur son écran Licence).
+(identifiant affiché sur son écran Licence). `--copier` met la clé dans le presse-papiers.
 
 ```sh
 node tools/podo-release.mjs --zip ~/dev/podonote/dist/podonote-app-1.1.8.zip \
